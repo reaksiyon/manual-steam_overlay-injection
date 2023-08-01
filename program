@@ -1,0 +1,81 @@
+#include <string>
+
+const wchar_t*
+SK_GetSteamDir (void)
+{
+  static
+    wchar_t wszSteamPath [MAX_PATH + 2] = { };
+
+  DWORD     len    =      MAX_PATH;
+  LSTATUS   status =
+    RegGetValueW ( HKEY_CURRENT_USER,
+                     LR"(SOFTWARE\Valve\Steam\)",
+                                      L"SteamPath",
+                       RRF_RT_REG_SZ,
+                         nullptr,
+                           wszSteamPath,
+                             (LPDWORD)&len );
+
+  if (status == ERROR_SUCCESS)
+    return wszSteamPath;
+
+  else
+    return nullptr;
+}
+
+constexpr int
+__stdcall
+SK_GetBitness (void)
+{
+#ifdef _M_AMD64
+  return 64;
+#endif
+  return 32;
+}
+
+#define SK_RunLHIfBitness(b,l,r)   SK_GetBitness () == (b) ? (l) : (r)
+
+bool
+SK_Steam_LoadOverlay (int32 appid = -1)
+{
+  static HMODULE hModOverlay = nullptr,
+                 hModClient  = nullptr;
+
+  if (hModOverlay != nullptr)
+    return true;
+
+  const wchar_t* wszSteamPath =
+    SK_GetSteamDir ();
+
+  if (wszSteamPath == nullptr)
+    return false;
+
+  if (appid != -1)
+  {
+    SetEnvironmentVariableA (
+      "SteamGameId",
+        std::to_string (appid).c_str ()
+    );
+  }
+
+  wchar_t    wszOverlayDLL [MAX_PATH + 2] = { };
+  wchar_t    wszClientDLL  [MAX_PATH + 2] = { };
+
+  lstrcatW ( wszOverlayDLL, wszSteamPath );
+  lstrcatW ( wszClientDLL,  wszSteamPath );
+
+  lstrcatW ( wszOverlayDLL,
+    SK_RunLHIfBitness ( 64, LR"(\GameOverlayRenderer64.dll)",
+                            LR"(\GameOverlayRenderer.dll)"    ) );
+  lstrcatW ( wszClientDLL, 
+    SK_RunLHIfBitness ( 64, LR"(\steamclient64.dll)",
+                            LR"(\steamclient.dll)"    ) );
+
+  hModClient =
+    LoadLibraryW (wszClientDLL);
+
+  hModOverlay =
+    LoadLibraryW (wszOverlayDLL);
+
+  return hModOverlay != nullptr;
+}
